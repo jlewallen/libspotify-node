@@ -2,8 +2,7 @@ require('./test');
 
 
 createSession(function (session) {
-  session.addListener('metadataUpdated', function () { sys.log('metadataUpdated'); });
-  session.playlists.addListener('load', function () {
+  session.playlists.addListener('loaded', function () {
     if (this.length > 0) {
       function f () {
         this.removeAllListeners();
@@ -19,7 +18,16 @@ createSession(function (session) {
         session.logout(function() { console.log('Logged out'); });
       }
 
-      this[0].addListener('updated', f); 
+      var listened = false;
+      for (var i = 0; i < this.length; ++i) {
+        if (!this[i].loaded) {
+          listened = true;
+          this[i].addListener('updated', f); 
+        }
+      }
+      if (!listened) {
+        session.logout(function() { console.log('Logged out'); });
+      }
     }
   });
 });

@@ -42,5 +42,4 @@ createSession(function (session) {
     assert.strictEqual(track.loaded, true);
     decref();
   });
-
 });

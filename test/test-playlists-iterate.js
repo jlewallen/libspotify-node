@@ -1,7 +1,7 @@
 require('./test');
 
 createSession(function (session) {
-  session.playlists.addListener('load', function () {
+  session.playlists.addListener('loaded', function () {
     var playlists = [];
 
     for (var i = 0; i < this.length; i++) {
