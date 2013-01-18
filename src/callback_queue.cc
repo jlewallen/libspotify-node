@@ -32,7 +32,9 @@ int CallbackQueue::process(sp_session* session,
                            bool once /*= false*/) {
   int hits = 0;
   CallbackQueueEntry *entry;
-  TAILQ_FOREACH(entry, &queue_, link) {
+  CallbackQueueEntry *next_entry;
+
+  TAILQ_FOREACH_SAFE(entry, &queue_, link, next_entry) {
     sp_error status;
 
     if (entry->type == kMetadataUpdateTypeTrack) {
