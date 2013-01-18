@@ -6,7 +6,7 @@ process.chdir(__dirname);
 
 var stopOnFailure = true; // set to true to abort on first failure
 var failcount = 0, runcount = 0;
-var stderrWrite = process.binding('stdio').writeError;
+var stderrWrite = function(line) { process.stderr.write(line); }
 var files = fs.readdirSync('.').filter(function(fn){
   return fn.match(/^test-.+\.js$/)
 }).sort();

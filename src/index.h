@@ -4,8 +4,8 @@
 #define SPOTIFY_INDEX_H_
 
 #include <node.h>  // includes v8.h, ev.h, eio.h, sys/types.h, etc
-#include <node_events.h>  // EventEmitter
 #include <libspotify/api.h>  // Spotify API
+#include "events.h"  // EventEmitter
 
 using namespace v8;
 using namespace node;

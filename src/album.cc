@@ -13,7 +13,7 @@ Persistent<FunctionTemplate> Album::constructor_template;
 // Album implementation
 
 Album::Album(sp_album *album)
-  : node::EventEmitter()
+  : EventEmitter()
   , album_(album) {
 }
 
@@ -100,7 +100,7 @@ void Album::Initialize(Handle<Object> target) {
   Local<FunctionTemplate> t = FunctionTemplate::New(New);
   constructor_template = Persistent<FunctionTemplate>::New(t);
   constructor_template->SetClassName(String::NewSymbol("Album"));
-  constructor_template->Inherit(EventEmitter::constructor_template);
+  // constructor_template->Inherit(EventEmitter::constructor_template);
 
   Local<ObjectTemplate> instance_t = constructor_template->InstanceTemplate();
   instance_t->SetInternalFieldCount(1);

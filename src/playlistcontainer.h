@@ -6,7 +6,7 @@
 #include <map>
 #include <list>
 
-class PlaylistContainer : public node::EventEmitter {
+class PlaylistContainer : public EventEmitter {
  public:
   explicit PlaylistContainer(sp_session* session, sp_playlistcontainer* playlist_container);
   ~PlaylistContainer();

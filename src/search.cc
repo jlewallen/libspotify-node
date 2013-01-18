@@ -11,7 +11,7 @@ Persistent<FunctionTemplate> SearchResult::constructor_template;
 // SearchResult implementation
 
 SearchResult::SearchResult(sp_session* session, sp_search *search)
-    : node::EventEmitter()
+    : EventEmitter()
     , session_(session)
     , search_(search) {
 }
@@ -137,7 +137,7 @@ void SearchResult::Initialize(Handle<Object> target) {
   Local<FunctionTemplate> t = FunctionTemplate::New(New);
   constructor_template = Persistent<FunctionTemplate>::New(t);
   constructor_template->SetClassName(String::NewSymbol("SearchResult"));
-  constructor_template->Inherit(EventEmitter::constructor_template);
+  // constructor_template->Inherit(EventEmitter::constructor_template);
 
   Local<ObjectTemplate> instance_t = constructor_template->InstanceTemplate();
   instance_t->SetInternalFieldCount(1);

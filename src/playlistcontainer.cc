@@ -37,7 +37,7 @@ static void PlaylistAdded(sp_playlistcontainer *playlist_container,
     Playlist::New(pc->session_, playlist),
     Integer::New(position)
   };
-  pc->Emit(String::New("playlistAdded"), 2, argv);
+  pc->Emit("playlistAdded", 2, argv);
 }
 
 static void PlaylistRemoved(sp_playlistcontainer *playlist_container,
@@ -50,7 +50,7 @@ static void PlaylistRemoved(sp_playlistcontainer *playlist_container,
     Playlist::New(pc->session_, playlist),
     Integer::New(old_position)
   };
-  pc->Emit(String::New("playlistRemoved"), 2, argv);
+  pc->Emit("playlistRemoved", 2, argv);
 }
 
 static void PlaylistMoved(sp_playlistcontainer *playlist_container,
@@ -65,14 +65,14 @@ static void PlaylistMoved(sp_playlistcontainer *playlist_container,
     Integer::New(old_position),
     Integer::New(new_position)
   };
-  pc->Emit(String::New("playlistMoved"), 3, argv);
+  pc->Emit("playlistMoved", 3, argv);
 }
 
 static void PlaylistContainerLoaded(sp_playlistcontainer* playlist_container,
                                     void* userdata) {
   // this is called on the main thread
   PlaylistContainer* pc = static_cast<PlaylistContainer*>(userdata);
-  pc->Emit(String::New("loaded"), 0, NULL);
+  pc->Emit("loaded", 0, NULL);
 }
 
 // -----------------------------------------------------------------------------
@@ -245,7 +245,7 @@ void PlaylistContainer::Initialize(Handle<Object> target) {
   Local<FunctionTemplate> t = FunctionTemplate::New();
   constructor_template = Persistent<FunctionTemplate>::New(t);
   constructor_template->SetClassName(String::NewSymbol("PlaylistContainer"));
-  constructor_template->Inherit(EventEmitter::constructor_template);
+  // constructor_template->Inherit(EventEmitter::constructor_template);
 
   NODE_SET_PROTOTYPE_METHOD(constructor_template, "create", Create);
   NODE_SET_PROTOTYPE_METHOD(constructor_template, "remove", Remove);

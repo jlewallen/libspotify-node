@@ -1,5 +1,10 @@
-var binding = require('./binding');
+var binding = require('bindings')('binding.node')
+var EventEmitter = require('events').EventEmitter;
 Object.keys(binding).forEach(function(k){ exports[k] = binding[k]; });
+
+Object.keys(EventEmitter.prototype).forEach(function(k){
+  binding.Session.prototype[k] = EventEmitter.prototype[k];
+});
 
 // helper to define immutable <constants> on <obj> -- see below for examples
 function defineConstants(obj, constants) {

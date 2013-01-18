@@ -1,3 +1,5 @@
+#define NODE_WANT_INTERNALS 0
+
 #include "session.h"
 #include "user.h"
 #include "search.h"
@@ -19,8 +21,6 @@ typedef struct search_data {
   Session *session;
   Persistent<Function> *callback;
 } search_data_t;
-
-static Persistent<String> log_message_symbol;
 
 // ----------------------------------------------------------------------------
 // libspotify callbacks
@@ -59,7 +59,7 @@ void Session::DequeueLogMessages() {
     const char* message = log_message_queue_.front();
     log_message_queue_.pop();
     Local<Value> argv[] = { String::New(message) };
-    Emit(log_message_symbol, 1, argv);
+    Emit("logMessage", 1, argv);
     delete message;
   }
 }
@@ -74,7 +74,7 @@ static void LogMessage(sp_session* session, const char* data) {
   if (pthread_self() == s->main_thread_id_) {
     // Called from the main runloop thread -- emit directly
     Local<Value> argv[] = { String::New(data) };
-    s->Emit(log_message_symbol, 1, argv);
+    s->Emit("logMessage", 1, argv);
   } else {
     // Called from a background thread -- queue and notify
     const char* message = strdup(data);
@@ -94,7 +94,7 @@ static void MessageToUser(sp_session* session, const char* data) {
   Session* s = reinterpret_cast<Session*>(sp_session_userdata(session));
   assert(s->main_thread_id_ == pthread_self() /* or we will crash */);
   Local<Value> argv[] = { String::New(data) };
-  s->Emit(String::New("message_to_user"), 1, argv);
+  s->Emit("message_to_user", 1, argv);
 }
 
 static void LoggedOut(sp_session* session) {
@@ -129,7 +129,7 @@ static void LoggedIn(sp_session* session, sp_error error) {
 static void MetadataUpdated(sp_session *session) {
   Session* s = reinterpret_cast<Session*>(sp_session_userdata(session));
   assert(s->main_thread_id_ == pthread_self() /* or we will crash */);
-  s->Emit(String::New("metadataUpdated"), 0, NULL);
+  s->Emit("metadataUpdated", 0, NULL);
   s->metadata_update_queue_.process(s->session_, s->handle_);
 }
 
@@ -137,7 +137,7 @@ static void ConnectionError(sp_session* session, sp_error error) {
   Session* s = reinterpret_cast<Session*>(sp_session_userdata(session));
   assert(s->main_thread_id_ == pthread_self() /* or we will crash */);
   Local<Value> argv[] = { String::New(sp_error_message(error)) };
-  s->Emit(String::New("connection_error"), 1, argv);
+  s->Emit("connection_error", 1, argv);
 }
 
 static void SearchComplete(sp_search *search, void *userdata) {
@@ -330,7 +330,7 @@ Handle<Value> Session::Login(const Arguments& args) {
   // save login callback
   if (s->login_callback_) cb_destroy(s->login_callback_);
   s->login_callback_ = cb_persist(args[2]);
-  sp_session_login(s->session_, *username, *password);
+  sp_session_login(s->session_, *username, *password, false, NULL);
   return Undefined();
 }
 
@@ -368,6 +368,8 @@ Handle<Value> Session::Search(const Arguments& args) {
   const int kDefaultAlbumCount = 10;
   const int kDefaultArtistOffset = 0;
   const int kDefaultArtistCount = 10;
+  const int kDefaultPlaylistOffset = 0;
+  const int kDefaultPlaylistCount = 10;
 
   Handle<Value> query;
   int track_offset;
@@ -376,6 +378,8 @@ Handle<Value> Session::Search(const Arguments& args) {
   int album_count;
   int artist_offset;
   int artist_count;
+  int playlist_offset;
+  int playlist_count;
 
   if (args[0]->IsString()) {
     query = args[0];
@@ -397,6 +401,8 @@ Handle<Value> Session::Search(const Arguments& args) {
     IOPT("albumCount", album_count, kDefaultAlbumOffset);
     IOPT("artistOffset", artist_offset, kDefaultArtistOffset);
     IOPT("artistCount", artist_count, kDefaultArtistCount);
+    IOPT("playlistOffset", playlist_offset, kDefaultPlaylistOffset);
+    IOPT("playlistCount", playlist_count, kDefaultPlaylistCount);
 
     #undef IOPT
   }
@@ -409,7 +415,9 @@ Handle<Value> Session::Search(const Arguments& args) {
                                        track_offset, track_count,
                                        album_offset, album_count,
                                        artist_offset, artist_count,
-                                       &SearchComplete, search_data);
+                                       playlist_offset, playlist_count,
+                                       SP_SEARCH_STANDARD, &SearchComplete,
+                                       search_data);
 
   if (!search)
     return JS_THROW(Error, "libspotify internal error when requesting search");
@@ -516,7 +524,7 @@ void Session::Initialize(Handle<Object> target) {
   HandleScope scope;
   Local<FunctionTemplate> t = FunctionTemplate::New(New);
   t->SetClassName(String::NewSymbol("Session"));
-  t->Inherit(EventEmitter::constructor_template);
+  // t->Inherit(EventEmitter::constructor_template);
 
   NODE_SET_PROTOTYPE_METHOD(t, "logout", Logout);
   NODE_SET_PROTOTYPE_METHOD(t, "login", Login);
@@ -531,6 +539,4 @@ void Session::Initialize(Handle<Object> target) {
   instance_t->SetAccessor(String::New("playlists"), PlaylistContainerGetter);
 
   target->Set(String::New("Session"), t->GetFunction());
-
-  log_message_symbol = NODE_PSYMBOL("logMessage");
 }

@@ -6,7 +6,7 @@ Persistent<FunctionTemplate> Artist::constructor_template;
 // Artist implementation
 
 Artist::Artist(sp_artist *artist)
-  : node::EventEmitter()
+  : EventEmitter()
   , artist_(artist) {
 }
 
@@ -77,7 +77,7 @@ void Artist::Initialize(Handle<Object> target) {
   Local<FunctionTemplate> t = FunctionTemplate::New(New);
   constructor_template = Persistent<FunctionTemplate>::New(t);
   constructor_template->SetClassName(String::NewSymbol("Artist"));
-  constructor_template->Inherit(EventEmitter::constructor_template);
+  // constructor_template->Inherit(EventEmitter::constructor_template);
 
   Local<ObjectTemplate> instance_t = constructor_template->InstanceTemplate();
   instance_t->SetInternalFieldCount(1);
