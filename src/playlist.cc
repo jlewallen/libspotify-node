@@ -105,10 +105,12 @@ static sp_playlist_callbacks callbacks = {
 // -----------------------------------------------------------------------------
 // Playlist implementation
 
-Playlist::Playlist(sp_session* session, sp_playlist* playlist)
+Playlist::Playlist(sp_session* session, sp_playlist* playlist,
+                   sp_playlist_type type)
     : EventEmitter()
     , session_(session)
-    , playlist_(playlist) {
+    , playlist_(playlist)
+    , type_(type) {
   if (playlist_) {
     sp_playlist_add_ref(playlist_);
     sp_playlist_add_callbacks(playlist_, &callbacks, this);
@@ -131,7 +133,8 @@ Playlist::~Playlist() {
 /**
  * Creates a new JavaScript playlist object wrapper, or a cached if one exists.
  */
-Handle<Value> Playlist::New(sp_session* session, sp_playlist *playlist) {
+Handle<Value> Playlist::New(sp_session* session, sp_playlist *playlist,
+                            sp_playlist_type type) {
   // Try to find playlist in cache
   PlaylistMap::iterator it = playlist_cache_.find(playlist);
 
@@ -142,7 +145,7 @@ Handle<Value> Playlist::New(sp_session* session, sp_playlist *playlist) {
   HandleScope scope;
   Persistent<Object> instance = Persistent<Object>::New(
       constructor_template->GetFunction()->NewInstance(0, NULL));
-  Playlist* pl = new Playlist(session, playlist);
+  Playlist* pl = new Playlist(session, playlist, type);
   pl->Wrap(instance);
   playlist_cache_[playlist] = instance;
   return scope.Close(instance);
@@ -290,6 +293,21 @@ Handle<Value> Playlist::NameGetter(Local<String> property,
   return scope.Close(String::New(sp_playlist_name(playlist)));
 }
 
+Handle<Value> Playlist::TypeGetter(Local<String> property,
+                                   const AccessorInfo& info) {
+  HandleScope scope;
+  sp_playlist_type playlist_type =
+    ObjectWrap::Unwrap<Playlist>(info.This())->type_;
+  const char *label = "unknown";
+  switch (playlist_type) {
+    case SP_PLAYLIST_TYPE_PLAYLIST: label = "playlist"; break;
+    case SP_PLAYLIST_TYPE_START_FOLDER: label = "begin"; break;
+    case SP_PLAYLIST_TYPE_END_FOLDER: label = "end"; break;
+    case SP_PLAYLIST_TYPE_PLACEHOLDER: label = "placeholder"; break;
+  }
+  return scope.Close(String::New(label));
+}
+
 Handle<Value> Playlist::UriGetter(Local<String> property,
                                   const AccessorInfo& info) {
   HandleScope scope;
@@ -324,6 +342,7 @@ void Playlist::Initialize(Handle<Object> target) {
                           HasPendingChangesGetter);
   instance_t->SetAccessor(String::NewSymbol("loaded"), LoadedGetter);
   instance_t->SetAccessor(String::NewSymbol("name"), NameGetter);
+  instance_t->SetAccessor(String::NewSymbol("type"), TypeGetter);
   instance_t->SetAccessor(String::NewSymbol("uri"), UriGetter);
   instance_t->SetAccessor(NODE_PSYMBOL("length"), LengthGetter);
   instance_t->SetIndexedPropertyHandler(TrackGetter,

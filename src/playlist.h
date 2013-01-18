@@ -5,19 +5,22 @@
 
 class Playlist : public EventEmitter {
  public:
-  explicit Playlist(sp_session* session, sp_playlist* playlist);
+  explicit Playlist(sp_session* session, sp_playlist* playlist, sp_playlist_type type);
 
   ~Playlist();
 
   static void Initialize(v8::Handle<v8::Object> target);
 
-  static v8::Handle<v8::Value> New(sp_session* session, sp_playlist *playlist);
+  static v8::Handle<v8::Value> New(sp_session* session, sp_playlist *playlist, sp_playlist_type type);
 
   static v8::Handle<v8::Value> LengthGetter(v8::Local<v8::String> property,
                                             const v8::AccessorInfo& info);
 
   static v8::Handle<v8::Value> LoadedGetter(v8::Local<v8::String> property,
                                             const v8::AccessorInfo& info);
+
+  static v8::Handle<v8::Value> TypeGetter(v8::Local<v8::String> property,
+                                          const AccessorInfo& info);
 
   static v8::Handle<v8::Value> NameGetter(v8::Local<v8::String> property,
                                           const AccessorInfo& info);
@@ -56,7 +59,7 @@ class Playlist : public EventEmitter {
 
   sp_session* session_;
   sp_playlist* playlist_;
-
+  sp_playlist_type type_;
   static Persistent<FunctionTemplate> constructor_template;
 };
 

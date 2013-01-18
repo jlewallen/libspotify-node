@@ -7,8 +7,8 @@
   the first time -- then finally iterate playlists to get the actual sequence.
 */
 var sys = require('sys'),
-    spotify = require('./spotify'),
-    account = require('./account');
+    spotify = require('../spotify'),
+    account = require('../account');
 
 var session = new spotify.Session({applicationKey: account.applicationKey});
 session.addListener('logMessage', function(m){ sys.error(m.substr(0,m.length-1)); });
@@ -27,15 +27,18 @@ session.login(account.username, account.password, function (err) {
   }
   var refcount = 1; // 1 for "load" event
   session.playlists.addListener('playlistAdded', function(playlist, position){
-    refcount++;
-    playlist.addListener('updating', function(){
-      //refcount++;
-    })
-    playlist.addListener('updated', function(){
-      if (--refcount === 0) finalize();
-    })
+    if (playlist.type == 'playlist') {
+      refcount++;
+      playlist.addListener('updating', function(){
+        //refcount++;
+      });
+      playlist.addListener('updated', function(){
+        console.log("updated", playlist.name, refcount);
+        if (--refcount === 0) finalize();
+      });
+    }
   })
-  session.playlists.addListener('load', function(){
+  session.playlists.addListener('loaded', function(){
     sys.error('Waiting for '+session.playlists.length+' playlists to load...');
     if (--refcount === 0) finalize();
   });

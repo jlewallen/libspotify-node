@@ -50,7 +50,8 @@ void Session::ProcessEvents() {
   if (session_)
     sp_session_process_events(session_, &timeout);
 
-  uv_timer_start(&runloop_timer_, SpotifyRunloopTimerProcess, timeout / 1000, 0);
+  uv_timer_start(&runloop_timer_, SpotifyRunloopTimerProcess,
+    timeout / 1000, 0);
 }
 
 void Session::DequeueLogMessages() {
@@ -105,9 +106,9 @@ static void LoggedOut(sp_session* session) {
     cb_destroy(s->logout_callback_);
     s->logout_callback_ = NULL;
   }
-  uv_unref((uv_handle_t*) &s->logmsg_async_);
-  uv_unref((uv_handle_t*) &s->runloop_async_);
-  uv_unref((uv_handle_t*) &s->runloop_timer_);
+  uv_unref(reinterpret_cast<uv_handle_t*>(&s->logmsg_async_));
+  uv_unref(reinterpret_cast<uv_handle_t*>(&s->runloop_async_));
+  uv_unref(reinterpret_cast<uv_handle_t*>(&s->runloop_timer_));
   s->DequeueLogMessages();
 }
 
@@ -273,7 +274,8 @@ Handle<Value> Session::New(const Arguments& args) {
 
   // ev_async for libspotify background thread to invoke processing on main
   s->runloop_async_.data = s;
-  uv_async_init(uv_default_loop(), &s->runloop_async_, SpotifyRunloopAsyncProcess);
+  uv_async_init(uv_default_loop(), &s->runloop_async_,
+                SpotifyRunloopAsyncProcess);
 
   // ev_timer for triggering libspotify periodic processing
   s->runloop_timer_.data = s;
@@ -283,7 +285,8 @@ Handle<Value> Session::New(const Arguments& args) {
 
   // uv_async for libspotify background thread to emit log message on main
   s->logmsg_async_.data = s;
-  uv_async_init(uv_default_loop(), &s->logmsg_async_, SpotifyRunloopAsyncLogMessage);
+  uv_async_init(uv_default_loop(), &s->logmsg_async_,
+                SpotifyRunloopAsyncLogMessage);
 
   sp_session* session;
   sp_error error = sp_session_create(&config, &session);
