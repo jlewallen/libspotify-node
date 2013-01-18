@@ -4,6 +4,11 @@ Object.keys(binding).forEach(function(k){ exports[k] = binding[k]; });
 
 Object.keys(EventEmitter.prototype).forEach(function(k){
   binding.Session.prototype[k] = EventEmitter.prototype[k];
+  binding.Artist.prototype[k] = EventEmitter.prototype[k];
+  binding.Album.prototype[k] = EventEmitter.prototype[k];
+  binding.Track.prototype[k] = EventEmitter.prototype[k];
+  binding.Playlist.prototype[k] = EventEmitter.prototype[k];
+  binding.PlaylistContainer.prototype[k] = EventEmitter.prototype[k];
 });
 
 // helper to define immutable <constants> on <obj> -- see below for examples
