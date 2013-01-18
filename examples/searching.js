@@ -7,7 +7,7 @@ session.addListener('logMessage', sys.print);
 session.login(account.username, account.password, function (err) {
   if (err) return sys.error(err.stack || err);
   session.search('album:belle', function(err, result){
-    sys.puts(sys.inspect(result));
+    // console.log(sys.inspect(result));
     session.logout();
   })
 });

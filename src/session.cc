@@ -362,14 +362,14 @@ Handle<Value> Session::Search(const Arguments& args) {
   const int kDefaultPlaylistCount = 10;
 
   Handle<Value> query;
-  int track_offset;
-  int track_count;
-  int album_offset;
-  int album_count;
-  int artist_offset;
-  int artist_count;
-  int playlist_offset;
-  int playlist_count;
+  int track_offset = kDefaultTrackOffset;
+  int track_count = kDefaultTrackCount;
+  int album_offset = kDefaultAlbumCount;
+  int album_count = kDefaultAlbumCount;
+  int artist_offset = kDefaultArtistCount;
+  int artist_count = kDefaultArtistCount;
+  int playlist_offset = kDefaultPlaylistCount;
+  int playlist_count = kDefaultPlaylistCount;
 
   if (args[0]->IsString()) {
     query = args[0];
@@ -406,7 +406,8 @@ Handle<Value> Session::Search(const Arguments& args) {
                                        album_offset, album_count,
                                        artist_offset, artist_count,
                                        playlist_offset, playlist_count,
-                                       SP_SEARCH_STANDARD, &SearchComplete,
+                                       SP_SEARCH_STANDARD,
+                                       &SearchComplete,
                                        search_data);
 
   if (!search)
