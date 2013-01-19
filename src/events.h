@@ -9,9 +9,10 @@
 class EventEmitter : public node::ObjectWrap {
   public:
     static void Init();
+
   public:
     EventEmitter();
     bool Emit(const char* event, int argc,  v8::Handle<v8::Value> argv[]);
 };
 
-#endif  // BINDING_H_
+#endif  // EVENTS_H_

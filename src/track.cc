@@ -124,7 +124,6 @@ Handle<Value> Track::UriGetter(Local<String> property,
                                const AccessorInfo& info) {
   HandleScope scope;
   Track *p = Unwrap<Track>(info.This());
-  //fprintf(stderr, "UriGetter\n");
 
   if (!p->track_ || !sp_track_is_loaded(p->track_))
     return Undefined();
@@ -148,7 +147,6 @@ void Track::Initialize(Handle<Object> target) {
   Local<FunctionTemplate> t = FunctionTemplate::New(New);
   constructor_template = Persistent<FunctionTemplate>::New(t);
   constructor_template->SetClassName(String::NewSymbol("Track"));
-  // constructor_template->Inherit(EventEmitter::constructor_template);
 
   Local<ObjectTemplate> instance_t = constructor_template->InstanceTemplate();
   instance_t->SetInternalFieldCount(1);
@@ -157,5 +155,25 @@ void Track::Initialize(Handle<Object> target) {
   instance_t->SetAccessor(String::New("artists"), ArtistsGetter);
   instance_t->SetAccessor(String::New("uri"), UriGetter);
 
+  NODE_SET_PROTOTYPE_METHOD(t, "play", Play);
+
   target->Set(String::New("Track"), constructor_template->GetFunction());
 }
+
+Handle<Value> Track::Play(const Arguments& args) {
+  HandleScope scope;
+
+  if (args.Length() > 0 && !args[0]->IsFunction())
+    return JS_THROW(TypeError, "last argument must be a function");
+
+  Track* t = Unwrap<Track>(args.This());
+
+  if (sp_session_player_load(t->session_, t->track_) != SP_ERROR_OK) {
+    return JS_THROW(TypeError, "error loading track");
+  }
+  if (sp_session_player_play(t->session_, true) != SP_ERROR_OK) {
+    return JS_THROW(TypeError, "error playing track");
+  }
+  return Undefined();
+}
+

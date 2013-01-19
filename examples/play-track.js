@@ -13,14 +13,26 @@ var link = 'spotify:track:01gCUID7bHTcp6JzeTfpIe';
 if (process.argv.length > 2) link = process.argv[2];
 
 var session = new spotify.Session({ applicationKey: account.applicationKey });
-session.addListener('logMessage', sys.print);
+session.on('logMessage', sys.print);
+
 session.login(account.username, account.password, function (err) {
   if (err) return sys.error(err.stack || err);
   session.getTrackByLink(link, function(err, track) {
-    if (err)
+    if (err) {
       sys.error(err.stack || err);
-    else
-      sys.puts('track loaded:\n'+track.name + " " + track.artists + " " + track.album);
-    session.logout();
+    }
+    else {
+      session.on('musicDelivery', function(message, buffer) {
+        // console.log(buffer);
+      });
+      session.on('playTokenLost', function() {
+        console.log("playTokenLost");
+      });
+      session.on('endOfTrack', function() {
+        console.log("endOfTrack");
+        track.play(function(data) { });
+      });
+      track.play(function(data) { });
+    }
   });
 });

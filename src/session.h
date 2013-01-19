@@ -7,6 +7,13 @@
 
 #include <queue>
 
+typedef struct audio_fifo {
+  TAILQ_HEAD(, audio_fifo_data) q;
+  int32_t total_frames;
+  uv_async_t async;
+  uv_mutex_t mutex;
+} audio_fifo_t;
+
 class Session : public EventEmitter {
  public:
   static void Initialize(v8::Handle<v8::Object> target);
@@ -28,8 +35,9 @@ class Session : public EventEmitter {
                                           const v8::AccessorInfo& info);
 
   void ProcessEvents();
+  void Close();
 
-  explicit Session(sp_session* session);
+  explicit Session();
   ~Session();
 
   sp_session* session_;
@@ -52,6 +60,8 @@ class Session : public EventEmitter {
   CallbackQueue  metadata_update_queue_;
 
   void DequeueLogMessages();
+
+  audio_fifo_t audio_fifo_;
 };
 
 #endif  // SPOTIFY_SESSION_H_

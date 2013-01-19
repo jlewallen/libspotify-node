@@ -9,12 +9,20 @@
 #include <signal.h>
 #include <string.h>
 #include <unistd.h>
+#include <stdlib.h>
 
 typedef struct log_message {
   struct log_message *next;
   const char *message;
 } log_message_t;
 
+typedef struct audio_fifo_data {
+  TAILQ_ENTRY(audio_fifo_data) link;
+  int32_t channels;
+  int32_t rate;
+  int32_t nsamples;
+  int16_t samples[0];
+} audio_fifo_data_t;
 
 // userdata passed with a search query
 typedef struct search_data {
@@ -27,20 +35,39 @@ typedef struct search_data {
 
 static void SpotifyRunloopTimerProcess(uv_timer_t *w, int revents) {
   Session *s = static_cast<Session*>(w->data);
+  assert(s->main_thread_id_ == pthread_self() /* or we will crash */);
   s->ProcessEvents();
 }
 
 static void SpotifyRunloopAsyncProcess(uv_async_t *w, int revents) {
   Session *s = static_cast<Session*>(w->data);
+  assert(s->main_thread_id_ == pthread_self() /* or we will crash */);
   s->ProcessEvents();
 }
 
 static void NotifyMainThread(sp_session* session) {
   // Called by a background thread (controlled by libspotify) when we need to
   // query sp_session_process_events, which is handled by
-  // Session::ProcessEvents. ev_async_send queues a call on the main ev runloop.
+  // Session::ProcessEvents. uv_async_send queues a call on the main ev runloop.
   Session* s = static_cast<Session*>(sp_session_userdata(session));
   uv_async_send(&s->runloop_async_);
+}
+
+void Session::Close() {
+  HandleScope scope;
+
+  if (logout_callback_) {
+    assert((*logout_callback_)->IsFunction());
+    (*logout_callback_)->Call(handle_, 0, NULL);
+    cb_destroy(logout_callback_);
+    logout_callback_ = NULL;
+  }
+  uv_unref(reinterpret_cast<uv_handle_t*>(&audio_fifo_.async));
+  uv_unref(reinterpret_cast<uv_handle_t*>(&logmsg_async_));
+  uv_unref(reinterpret_cast<uv_handle_t*>(&runloop_async_));
+  uv_unref(reinterpret_cast<uv_handle_t*>(&runloop_timer_));
+  DequeueLogMessages();
+  Unref();
 }
 
 void Session::ProcessEvents() {
@@ -66,6 +93,7 @@ void Session::DequeueLogMessages() {
 
 static void SpotifyRunloopAsyncLogMessage(uv_async_t *w, int revents) {
   Session *s = static_cast<Session*>(w->data);
+  assert(s->main_thread_id_ == pthread_self() /* or we will crash */);
   s->DequeueLogMessages();
 }
 
@@ -93,6 +121,8 @@ static void LogMessage(sp_session* session, const char* data) {
 static void MessageToUser(sp_session* session, const char* data) {
   Session* s = reinterpret_cast<Session*>(sp_session_userdata(session));
   assert(s->main_thread_id_ == pthread_self() /* or we will crash */);
+  HandleScope scope;
+
   Local<Value> argv[] = { String::New(data) };
   s->Emit("message_to_user", 1, argv);
 }
@@ -100,16 +130,8 @@ static void MessageToUser(sp_session* session, const char* data) {
 static void LoggedOut(sp_session* session) {
   Session* s = reinterpret_cast<Session*>(sp_session_userdata(session));
   assert(s->main_thread_id_ == pthread_self() /* or we will crash */);
-  if (s->logout_callback_) {
-    assert((*s->logout_callback_)->IsFunction());
-    (*s->logout_callback_)->Call(s->handle_, 0, NULL);
-    cb_destroy(s->logout_callback_);
-    s->logout_callback_ = NULL;
-  }
-  uv_unref(reinterpret_cast<uv_handle_t*>(&s->logmsg_async_));
-  uv_unref(reinterpret_cast<uv_handle_t*>(&s->runloop_async_));
-  uv_unref(reinterpret_cast<uv_handle_t*>(&s->runloop_timer_));
-  s->DequeueLogMessages();
+
+  s->Close();
 }
 
 static void LoggedIn(sp_session* session, sp_error error) {
@@ -117,6 +139,8 @@ static void LoggedIn(sp_session* session, sp_error error) {
   assert(s->login_callback_ != NULL);
   assert((*s->login_callback_)->IsFunction());
   assert(s->main_thread_id_ == pthread_self() /* or we will crash */);
+  HandleScope scope;
+
   if (error != SP_ERROR_OK) {
     Local<Value> argv[] = {
       Exception::Error(String::New(sp_error_message(error))) };
@@ -145,6 +169,7 @@ static void ConnectionError(sp_session* session, sp_error error) {
 static void SearchComplete(sp_search *search, void *userdata) {
   search_data_t *sdata = static_cast<search_data_t*>(userdata);
   Session *s = sdata->session;
+  HandleScope scope;
 
   assert((*sdata->callback)->IsFunction());
 
@@ -165,11 +190,119 @@ static void SearchComplete(sp_search *search, void *userdata) {
   delete sdata;
 }
 
+static Local<Object> makeBuffer(char* data, size_t size) {
+  HandleScope scope;
+ 
+  // It ends up being kind of a pain to convert a slow buffer into a fast
+  // one since the fast part is implemented in JavaScript.
+  Local<Buffer> slowBuffer = Buffer::New(data, size);
+  // First get the Buffer from global scope...
+  Local<Object> global = Context::GetCurrent()->Global();
+  Local<Value> bv = global->Get(String::NewSymbol("Buffer"));
+  assert(bv->IsFunction());
+  Local<Function> b = Local<Function>::Cast(bv);
+  // ...call Buffer() with the slow buffer and get a fast buffer back...
+  Handle<Value> argv[3] = { slowBuffer->handle_, Integer::New(size), Integer::New(0) };
+  Local<Object> fastBuffer = b->NewInstance(3, argv);
+ 
+  return scope.Close(fastBuffer);
+}
+
+static void SpotifyRunloopAsyncAudio(uv_async_t *w, int revents) {
+  HandleScope handle_scope;
+
+  Session *s = static_cast<Session*>(w->data);
+  assert(s->main_thread_id_ == pthread_self() /* or we will crash */);
+
+  audio_fifo_t *af = &s->audio_fifo_;
+  audio_fifo_data_t *afd;
+
+  uv_mutex_lock(&af->mutex);
+
+  size_t position = 0;
+  while((afd = TAILQ_FIRST(&af->q))) {
+    size_t block_size = afd->nsamples * sizeof(int16_t) * afd->channels;
+    // Buffer *bp = Buffer::New(block_size);
+    // memcpy(Buffer::Data(bp), afd->samples, block_size);
+    // v8::Local<v8::Object> globalObj = v8::Context::GetCurrent()->Global();
+    // v8::Local<v8::Function> bufferConstructor = v8::Local<v8::Function>::Cast(globalObj->Get(v8::String::New("Buffer")));
+    // v8::Handle<v8::Value> constructorArgs[3] = { bp->handle_, v8::Integer::New(block_size), v8::Integer::New(0) };
+    // v8::Local<v8::Object> v8Buffer = bufferConstructor->NewInstance(3, constructorArgs);
+    // v8::Local<v8::Object> v8Buffer = bp->handle_;
+
+    Handle<Value> argv[] = {
+      Integer::New(0),
+      makeBuffer(reinterpret_cast<char *>(afd->samples), block_size)
+    };
+    s->Emit("musicDelivery", 2, argv);
+
+    TAILQ_REMOVE(&af->q, afd, link);
+    free(afd);
+  }
+
+  af->total_frames = 0;
+
+  uv_mutex_unlock(&af->mutex);
+}
+
+static int MusicDelivery(sp_session *session, const sp_audioformat *format, const void *frames, int num_frames) {
+  Session* s = reinterpret_cast<Session*>(sp_session_userdata(session));
+  if (num_frames == 0) {
+    return 0;
+  }
+
+  audio_fifo_t *af = &s->audio_fifo_;
+  uv_mutex_lock(&af->mutex);
+
+  if (af->total_frames > format->sample_rate) {
+    uv_mutex_unlock(&af->mutex);
+    return 0;
+  }
+
+  size_t bytes = num_frames * sizeof(int16_t) * format->channels;
+  audio_fifo_data_t *afd = reinterpret_cast<audio_fifo_data_t *>(malloc(sizeof(audio_fifo_data_t) + bytes));
+  memcpy(afd->samples, frames, bytes);
+  afd->nsamples = num_frames;
+  afd->rate = format->sample_rate;
+  afd->channels = format->channels;
+  TAILQ_INSERT_TAIL(&af->q, afd, link);
+
+  af->total_frames += num_frames;
+
+  uv_async_send(&af->async);
+
+  uv_mutex_unlock(&af->mutex);
+
+  return num_frames;
+}
+
+static void EndOfTrack(sp_session *session) {
+  Session* s = reinterpret_cast<Session*>(sp_session_userdata(session));
+  assert(s->main_thread_id_ == pthread_self() /* or we will crash */);
+  HandleScope handle_scope;
+
+  sp_session_player_unload(session);
+
+  Local<Value> argv[] = { };
+  s->Emit("endOfTrack", 0, argv);
+}
+
+static void PlayTokenLost(sp_session *session) {
+  Session* s = reinterpret_cast<Session*>(sp_session_userdata(session));
+  assert(s->main_thread_id_ == pthread_self() /* or we will crash */);
+  HandleScope handle_scope;
+
+  sp_session_player_unload(session);
+
+  Local<Value> argv[] = { };
+  s->Emit("playTokenLost", 0, argv);
+}
+
 // ----------------------------------------------------------------------------
 // Session implementation
 
-Session::Session(sp_session* session)
-    : session_(session)
+Session::Session()
+    : session_(NULL)
     , main_thread_id_((pthread_t) -1)
     , login_callback_(NULL)
     , logout_callback_(NULL)
@@ -198,7 +331,7 @@ Session::~Session() {
 }
 
 Handle<Value> Session::New(const Arguments& args) {
-  Session* s = new Session(NULL);
+  Session* s = new Session();
   static sp_session_callbacks callbacks = {
     /* logged_in */             LoggedIn,
     /* logged_out */            LoggedOut,
@@ -206,10 +339,10 @@ Handle<Value> Session::New(const Arguments& args) {
     /* connection_error */      ConnectionError,
     /* message_to_user */       MessageToUser,
     /* notify_main_thread */    NotifyMainThread,
-    /* music_delivery */        NULL,  // we don't play music
-    /* play_token_lost */       NULL,  // we don't play music
+    /* music_delivery */        MusicDelivery,
+    /* play_token_lost */       PlayTokenLost,
     /* log_message */           LogMessage,
-    /* end_of_track */          NULL,  // we don't play music
+    /* end_of_track */          EndOfTrack,
   };
 
   sp_session_config config = {
@@ -272,12 +405,12 @@ Handle<Value> Session::New(const Arguments& args) {
     }
   }
 
-  // ev_async for libspotify background thread to invoke processing on main
+  // uv_async for libspotify background thread to invoke processing on main
   s->runloop_async_.data = s;
   uv_async_init(uv_default_loop(), &s->runloop_async_,
                 SpotifyRunloopAsyncProcess);
 
-  // ev_timer for triggering libspotify periodic processing
+  // uv_timer for triggering libspotify periodic processing
   s->runloop_timer_.data = s;
   uv_timer_init(uv_default_loop(), &s->runloop_timer_);
   // Note: No need to start the timer as it's started by first invocation after
@@ -288,6 +421,13 @@ Handle<Value> Session::New(const Arguments& args) {
   uv_async_init(uv_default_loop(), &s->logmsg_async_,
                 SpotifyRunloopAsyncLogMessage);
 
+  s->audio_fifo_.async.data = s;
+  uv_async_init(uv_default_loop(), &s->audio_fifo_.async,
+                SpotifyRunloopAsyncAudio);
+  uv_mutex_init(&s->audio_fifo_.mutex);
+  TAILQ_INIT(&s->audio_fifo_.q);
+  s->audio_fifo_.total_frames = 0;
+
   sp_session* session;
   sp_error error = sp_session_create(&config, &session);
 
@@ -297,6 +437,7 @@ Handle<Value> Session::New(const Arguments& args) {
   s->session_ = session;
   s->main_thread_id_ = pthread_self();
   s->Wrap(args.Holder());
+  s->Ref();
   return args.This();
 }
 
@@ -511,11 +652,9 @@ Handle<Value> Session::UserGetter(Local<String> property,
 
 
 void Session::Initialize(Handle<Object> target) {
-  //printf("main T# %p\n", pthread_self());
   HandleScope scope;
   Local<FunctionTemplate> t = FunctionTemplate::New(New);
   t->SetClassName(String::NewSymbol("Session"));
-  // t->Inherit(EventEmitter::constructor_template);
 
   NODE_SET_PROTOTYPE_METHOD(t, "logout", Logout);
   NODE_SET_PROTOTYPE_METHOD(t, "login", Login);
@@ -524,10 +663,10 @@ void Session::Initialize(Handle<Object> target) {
 
   Local<ObjectTemplate> instance_t = t->InstanceTemplate();
   instance_t->SetInternalFieldCount(1);
-  instance_t->SetAccessor(String::New("user"), UserGetter);
-  instance_t->SetAccessor(String::New("_connectionState"),
+  instance_t->SetAccessor(String::NewSymbol("user"), UserGetter);
+  instance_t->SetAccessor(String::NewSymbol("_connectionState"),
                           ConnectionStateGetter);
-  instance_t->SetAccessor(String::New("playlists"), PlaylistContainerGetter);
+  instance_t->SetAccessor(String::NewSymbol("playlists"), PlaylistContainerGetter);
 
-  target->Set(String::New("Session"), t->GetFunction());
+  target->Set(String::NewSymbol("Session"), t->GetFunction());
 }

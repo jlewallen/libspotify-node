@@ -16,6 +16,7 @@ class Track : public EventEmitter {
 
   static Handle<Value> New(const Arguments& args);
   static Handle<Value> New(sp_session* session, sp_track *track);
+  static Handle<Value> Play(const Arguments& args);
 
   GETTER_H(LoadedGetter);
   GETTER_H(AlbumGetter);
