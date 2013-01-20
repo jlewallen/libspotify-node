@@ -219,19 +219,16 @@ static void SpotifyRunloopAsyncAudio(uv_async_t *w, int revents) {
 
   uv_mutex_lock(&af->mutex);
 
-  size_t position = 0;
   while((afd = TAILQ_FIRST(&af->q))) {
     size_t block_size = afd->nsamples * sizeof(int16_t) * afd->channels;
-    // Buffer *bp = Buffer::New(block_size);
-    // memcpy(Buffer::Data(bp), afd->samples, block_size);
-    // v8::Local<v8::Object> globalObj = v8::Context::GetCurrent()->Global();
-    // v8::Local<v8::Function> bufferConstructor = v8::Local<v8::Function>::Cast(globalObj->Get(v8::String::New("Buffer")));
-    // v8::Handle<v8::Value> constructorArgs[3] = { bp->handle_, v8::Integer::New(block_size), v8::Integer::New(0) };
-    // v8::Local<v8::Object> v8Buffer = bufferConstructor->NewInstance(3, constructorArgs);
-    // v8::Local<v8::Object> v8Buffer = bp->handle_;
+
+    Local<Object> metaObject = Object::New();
+    metaObject->Set(String::NewSymbol("samples"), Integer::New(afd->nsamples));
+    metaObject->Set(String::NewSymbol("channels"), Integer::New(afd->channels));
+    metaObject->Set(String::NewSymbol("rate"), Integer::New(afd->rate));
 
     Handle<Value> argv[] = {
-      Integer::New(0),
+      metaObject,
       makeBuffer(reinterpret_cast<char *>(afd->samples), block_size)
     };
     s->Emit("musicDelivery", 2, argv);

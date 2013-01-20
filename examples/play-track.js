@@ -22,8 +22,8 @@ session.login(account.username, account.password, function (err) {
       sys.error(err.stack || err);
     }
     else {
-      session.on('musicDelivery', function(message, buffer) {
-        // console.log(buffer);
+      session.on('musicDelivery', function(meta, buffer) {
+        console.log(meta, buffer);
       });
       session.on('playTokenLost', function() {
         console.log("playTokenLost");
