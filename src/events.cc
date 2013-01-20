@@ -16,13 +16,14 @@ bool EventEmitter::Emit(const char* event, int argc,
   if (new_argv == NULL) {
     return false;
   }
-  
+
   new_argv[0] = v8::String::New(event);
   for (int i = 0; i < argc; i++) {
     new_argv[i + 1] = argv[i];
   }
 
-  v8::Local<v8::Value> emit_v = this->handle_->Get(v8::String::NewSymbol("emit"));
+  v8::Local<v8::String> emit_symbol = v8::String::NewSymbol("emit");
+  v8::Local<v8::Value> emit_v = this->handle_->Get(emit_symbol);
   v8::Local<v8::Function> emit = v8::Local<v8::Function>::Cast(emit_v);
   emit->Call(this->handle_, new_argc, new_argv);
 

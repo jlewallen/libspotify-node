@@ -192,7 +192,7 @@ static void SearchComplete(sp_search *search, void *userdata) {
 
 static Local<Object> makeBuffer(char* data, size_t size) {
   HandleScope scope;
- 
+
   // It ends up being kind of a pain to convert a slow buffer into a fast
   // one since the fast part is implemented in JavaScript.
   Local<Buffer> slowBuffer = Buffer::New(data, size);
@@ -202,9 +202,13 @@ static Local<Object> makeBuffer(char* data, size_t size) {
   assert(bv->IsFunction());
   Local<Function> b = Local<Function>::Cast(bv);
   // ...call Buffer() with the slow buffer and get a fast buffer back...
-  Handle<Value> argv[3] = { slowBuffer->handle_, Integer::New(size), Integer::New(0) };
+  Handle<Value> argv[3] = {
+    slowBuffer->handle_,
+    Integer::New(size),
+    Integer::New(0)
+  };
   Local<Object> fastBuffer = b->NewInstance(3, argv);
- 
+
   return scope.Close(fastBuffer);
 }
 
@@ -219,7 +223,7 @@ static void SpotifyRunloopAsyncAudio(uv_async_t *w, int revents) {
 
   uv_mutex_lock(&af->mutex);
 
-  while((afd = TAILQ_FIRST(&af->q))) {
+  while ((afd = TAILQ_FIRST(&af->q))) {
     size_t block_size = afd->nsamples * sizeof(int16_t) * afd->channels;
 
     Local<Object> metaObject = Object::New();
@@ -242,7 +246,8 @@ static void SpotifyRunloopAsyncAudio(uv_async_t *w, int revents) {
   uv_mutex_unlock(&af->mutex);
 }
 
-static int MusicDelivery(sp_session *session, const sp_audioformat *format, const void *frames, int num_frames) {
+static int MusicDelivery(sp_session *session, const sp_audioformat *format,
+                         const void *frames, int num_frames) {
   Session* s = reinterpret_cast<Session*>(sp_session_userdata(session));
   if (num_frames == 0) {
     return 0;
@@ -257,7 +262,8 @@ static int MusicDelivery(sp_session *session, const sp_audioformat *format, cons
   }
 
   size_t bytes = num_frames * sizeof(int16_t) * format->channels;
-  audio_fifo_data_t *afd = reinterpret_cast<audio_fifo_data_t *>(malloc(sizeof(audio_fifo_data_t) + bytes));
+  audio_fifo_data_t *afd = reinterpret_cast<audio_fifo_data_t *>(
+    malloc(sizeof(audio_fifo_data_t) + bytes));
   memcpy(afd->samples, frames, bytes);
   afd->nsamples = num_frames;
   afd->rate = format->sample_rate;
@@ -663,7 +669,8 @@ void Session::Initialize(Handle<Object> target) {
   instance_t->SetAccessor(String::NewSymbol("user"), UserGetter);
   instance_t->SetAccessor(String::NewSymbol("_connectionState"),
                           ConnectionStateGetter);
-  instance_t->SetAccessor(String::NewSymbol("playlists"), PlaylistContainerGetter);
+  instance_t->SetAccessor(String::NewSymbol("playlists"),
+                          PlaylistContainerGetter);
 
   target->Set(String::NewSymbol("Session"), t->GetFunction());
 }
